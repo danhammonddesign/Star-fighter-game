@@ -1,0 +1,426 @@
+"""The Star Fighter face designs, expressed as Clockology layer graphs.
+
+Positions are normalised to the centre of the canvas: horizontal runs -1 (left)
+to +1 (right), vertical runs -1 (bottom) to +1 (top). Layers are drawn in array
+order, so the first entry is the bottom of the stack.
+"""
+
+from __future__ import annotations
+
+import io
+import uuid
+
+from PIL import Image, ImageDraw, ImageFont
+
+from . import art
+
+# Canvas sizes are the native pixel dimensions Clockology uses per watch model.
+CANVASES = {
+    "40mm": (324, 394),
+    "41mm": (352, 430),
+    "42mm-s10": (374, 446),
+    "44mm": (368, 448),
+    "45mm": (396, 484),
+    "46mm-s10": (416, 496),
+    "49mm-ultra": (410, 502),
+}
+
+DEFAULT_SIZES = ("41mm", "45mm", "46mm-s10", "49mm-ultra")
+
+BASE_COLORS = [
+    "#E9F6FFFF",  # 0  instrument white
+    "#04070CFF",  # 1  space black, the backdrop
+    "#3DFF9AFF",  # 2  primary HUD accent
+    "#00D9FFFF",  # 3  secondary scanner accent
+    "#FF3355FF",  # 4  alert red
+    "#FFC24BFF",  # 5  amber
+    "#6F8496FF",  # 6  slate, for chrome and framing
+    "#9BFFC9FF",  # 7  pale accent
+    "#14202BFF",  # 8  panel dark
+    "#FF7A00FF",  # 9  ion orange
+    "#B980FFFF",  # 10 plasma violet
+    "#FFFFFFFF",  # 11 white
+]
+
+# Each variant only repaints the three accent slots.
+VARIANTS = {
+    "green": {},
+    "amber": {2: "#FFB13DFF", 3: "#FF7A00FF", 7: "#FFE4B0FF"},
+    "ice": {2: "#7FE9FFFF", 3: "#2E9BFFFF", 7: "#D6F4FFFF"},
+}
+
+
+def palette(variant: str) -> list[str]:
+    colors = list(BASE_COLORS)
+    for index, value in VARIANTS[variant].items():
+        colors[index] = value
+    return colors
+
+
+# Readout placement, shared by the layer graph and the preview renderer so the
+# two can never drift apart. Values are (x, y, scale) in normalised centre coords.
+ANALOG_POS = {
+    "date": (0.0, 0.52, 0.3125),
+    "hull": (-0.40, -0.46, 0.2625),
+    "hull_icon": (-0.40, -0.30, 0.45),
+    "battery": (0.40, -0.46, 1.3),
+}
+
+HUD_POS = {
+    "callsign": (0.0, 0.62, 0.16),
+    "time": (0.0, 0.06, 0.82),
+    "date": (0.0, -0.22, 0.2125),
+    "hull_label": (-0.42, -0.42, 0.13),
+    "hull": (-0.42, -0.56, 0.2125),
+    "temp_label": (0.42, -0.42, 0.13),
+    "temp": (0.42, -0.56, 0.2125),
+    "battery": (0.0, -0.80, 1.2),
+}
+
+# Clockology text scale of 1.0 renders at roughly this fraction of canvas height.
+TEXT_SCALE_TO_HEIGHT = 0.19
+
+
+def _num(value) -> str:
+    return f"{float(value)}"
+
+
+def _layer(layer_type, name, options, *, color=0, x=0.0, y=0.0,
+           scale=1.0, alpha=1.0, angle=0.0, image="", hidden=False) -> dict:
+    return {
+        "layerType": layer_type,
+        "customName": name,
+        "layerOptions": options,
+        "desiredThemeColorIndex": color,
+        "horizontalPosition": _num(x),
+        "verticalPosition": _num(y),
+        "scale": _num(scale),
+        "alpha": _num(alpha),
+        "angleOffset": _num(angle),
+        "filenameForImage": image,
+        "isHidden": hidden,
+    }
+
+
+def _place(entry) -> dict:
+    x, y, scale = entry
+    return {"x": x, "y": y, "scale": scale}
+
+
+def _texture_options(*, tinted: bool, transparent: bool) -> dict:
+    return {
+        "backgroundType": "FaceBackgroundTypeFilled",
+        "filename": "",
+        "tinted": tinted,
+        "anglePerSec": 0.0,
+        "hasTransparency": transparent,
+    }
+
+
+def _text_options(format_type, *, custom_text="", justification="Centered",
+                  kerning=0.0, outline_width=0.0, outline_color=0, effect="None") -> dict:
+    return {
+        "formatType": format_type,
+        "customText": custom_text,
+        "shouldShowCustomText": bool(custom_text),
+        "justificationType": justification,
+        "fontType": "NumberTextTypeSystem",
+        "customFont": "",
+        "casingType": "Uppercased",
+        "kerning": _num(kerning),
+        "effectType": effect,
+        "outlineWidth": _num(outline_width),
+        "desiredThemeColorIndexForOutline": str(outline_color),
+        "angle": "45.0",
+        "radius": "50.0",
+    }
+
+
+def _hand_options(kind: str) -> dict:
+    options = {
+        "handType": {
+            "HourHand": "HourHandTypeImageGallery",
+            "MinuteHand": "MinuteHandImageGallery",
+            "SecondHand": "SecondHandGallery",
+        }[kind],
+        "handImage": "",
+        "imageScale": "1.0",
+        "imageXPos": "0.5",
+        "imageYPos": "0.5",
+        "animateClockwise": True,
+        "outlineWidth": "0.0",
+        "effectsStrength": "0.0",
+        "desiredThemeColorIndexForOutline": "0",
+        "desiredThemeColorIndexForHighlights": "0",
+        "desiredThemeColorIndexForMoreHighlights": "0",
+    }
+    if kind == "HourHand":
+        options["use24HourRotation"] = False
+    if kind == "MinuteHand":
+        options["handAnimation"] = "MinuteHandMovementSmooth"
+    if kind == "SecondHand":
+        options["handAnimation"] = "SecondHandMovementSmooth"
+        options["physicsFieldType"] = "None"
+        options["physicFieldStrength"] = "0.0"
+    return options
+
+
+class AssetLibrary:
+    """Renders each artwork once per canvas and hands out Clockology filenames."""
+
+    def __init__(self, width: int, height: int, seed: int):
+        self.width, self.height, self.seed = width, height, seed
+        self._images: dict[str, Image.Image] = {}
+        self._files: dict[str, str] = {}
+        self.assets: list[dict] = []
+
+    def image(self, key: str) -> Image.Image:
+        if key not in self._images:
+            builder = getattr(art, key)
+            kwargs = {"seed": self.seed} if key == "starfield" else {}
+            self._images[key] = builder(self.width, self.height, **kwargs)
+        return self._images[key]
+
+    def filename(self, key: str) -> str:
+        if key not in self._files:
+            image = self.image(key)
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG", optimize=True)
+            name = f"{uuid.uuid4()}.png".upper().replace(".PNG", ".png")
+            self._files[key] = name
+            self.assets.append({"filename": name, "assetData": buffer.getvalue()})
+        return self._files[key]
+
+
+def _chrome_layers(lib: AssetLibrary) -> list[dict]:
+    """Backdrop and HUD framing shared by both designs."""
+    return [
+        _layer("ColorTexture", "Space: Void", _texture_options(tinted=False, transparent=False), color=1),
+        _layer("ImageTexture", "Space: Starfield", _texture_options(tinted=False, transparent=True),
+               color=0, image=lib.filename("starfield")),
+    ]
+
+
+def analog_layers(lib: AssetLibrary) -> list[dict]:
+    layers = _chrome_layers(lib)
+    layers += [
+        _layer("ImageTexture", "HUD: Tick Dial", _texture_options(tinted=True, transparent=True),
+               color=2, image=lib.filename("hud_ring")),
+        _layer("ImageTexture", "HUD: Corner Brackets", _texture_options(tinted=True, transparent=True),
+               color=6, image=lib.filename("hud_frame")),
+        _layer("ImageTexture", "HUD: Targeting Reticle", _texture_options(tinted=True, transparent=True),
+               color=3, alpha=0.7, image=lib.filename("reticle")),
+
+        _layer("DateTimeLabel", "Readout: Date", _text_options("DADD", kerning=2.0),
+               color=2, **_place(ANALOG_POS["date"])),
+        _layer("HealthLabel", "Readout: Hull (Heart Rate)", _text_options("HeartRate", kerning=2.0),
+               color=4, **_place(ANALOG_POS["hull"])),
+        _layer("Icon", "Readout: Hull Icon", {"iconType": "heart", "thickness": 4},
+               color=4, **_place(ANALOG_POS["hull_icon"])),
+        _layer("BatteryIndicator", "Readout: Shields (Battery)", {
+            "indicatorType": "normal",
+            "autoBatteryColor": False,
+            "desiredThemeColorIndexForBatteryLevel": "2",
+            "desiredThemeColorIndexForOutline": "6",
+            "innerPadding": "0.0",
+            "outlineWidth": "1.0",
+        }, color=2, **_place(ANALOG_POS["battery"])),
+        _layer("ActivityRing", "Readout: Fuel (Move Ring)", {
+            "activityRingType": "Move",
+            "desiredThemeColorIndexForStart": "9",
+            "desiredThemeColorIndexForEnd": "9",
+            "ringWidth": "9.0",
+            "backgroundAlpha": "0.22",
+        }, color=9, y=0.0, scale=1.86, hidden=True),
+
+        _layer("HourHand", "Hands: Hour", _hand_options("HourHand"),
+               color=0, image=lib.filename("hand_hour")),
+        _layer("MinuteHand", "Hands: Minute", _hand_options("MinuteHand"),
+               color=0, image=lib.filename("hand_minute")),
+        _layer("SecondHand", "Hands: Second Fighter", _hand_options("SecondHand"),
+               color=4, image=lib.filename("hand_second")),
+        _layer("ImageTexture", "Hands: Centre Cap", _texture_options(tinted=True, transparent=True),
+               color=0, image=lib.filename("center_cap")),
+    ]
+    return layers
+
+
+def hud_layers(lib: AssetLibrary) -> list[dict]:
+    layers = _chrome_layers(lib)
+    layers += [
+        _layer("SecondHand", "Scanner: Radar Sweep", _hand_options("SecondHand"),
+               color=2, alpha=0.55, image=lib.filename("radar_sweep")),
+        _layer("ImageTexture", "HUD: Tick Dial", _texture_options(tinted=True, transparent=True),
+               color=2, image=lib.filename("hud_ring")),
+        _layer("ImageTexture", "HUD: Corner Brackets", _texture_options(tinted=True, transparent=True),
+               color=6, image=lib.filename("hud_frame")),
+
+        _layer("TextLabel", "Readout: Callsign", _text_options("HHMM", custom_text="STAR FIGHTER", kerning=6.0),
+               color=6, **_place(HUD_POS["callsign"])),
+        _layer("DateTimeLabel", "Readout: Time", _text_options("HHMM", kerning=1.0),
+               color=0, **_place(HUD_POS["time"])),
+        _layer("DateTimeLabel", "Readout: Date", _text_options("DADD", kerning=3.0),
+               color=2, **_place(HUD_POS["date"])),
+
+        _layer("TextLabel", "Label: Hull", _text_options("HHMM", custom_text="HULL", kerning=3.0,),
+               color=6, **_place(HUD_POS["hull_label"])),
+        _layer("HealthLabel", "Readout: Hull (Heart Rate)", _text_options("HeartRate", kerning=1.0),
+               color=4, **_place(HUD_POS["hull"])),
+        _layer("TextLabel", "Label: Temp", _text_options("HHMM", custom_text="TEMP", kerning=3.0),
+               color=6, **_place(HUD_POS["temp_label"])),
+        _layer("WeatherLabel", "Readout: Temperature", {
+            **_text_options("Temperature", kerning=1.0),
+            "autoColor": False,
+            "thickness": 3,
+            "timeSpan": "Current",
+            "timeSpanOffset": "1",
+            "unitDisplayLevel": "None",
+        }, color=3, **_place(HUD_POS["temp"])),
+
+        _layer("BatteryIndicator", "Readout: Shields (Battery)", {
+            "indicatorType": "normal",
+            "autoBatteryColor": False,
+            "desiredThemeColorIndexForBatteryLevel": "2",
+            "desiredThemeColorIndexForOutline": "6",
+            "innerPadding": "0.0",
+            "outlineWidth": "1.0",
+        }, color=2, **_place(HUD_POS["battery"])),
+    ]
+    return layers
+
+
+DESIGNS = {
+    "analog": ("Star Fighter Analog", analog_layers, ["analog", "health", "hd"]),
+    "hud": ("Star Fighter HUD", hud_layers, ["digital", "weather", "health", "hd"]),
+}
+
+
+# --- thumbnail -------------------------------------------------------------
+
+def _font(size: int):
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _hex_to_rgb(value: str):
+    value = value.lstrip("#")
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _tint(image: Image.Image, color, alpha: float = 1.0) -> Image.Image:
+    solid = Image.new("RGBA", image.size, color + (255,))
+    channel = image.getchannel("A")
+    if alpha != 1.0:
+        channel = channel.point(lambda v: int(v * alpha))
+    solid.putalpha(channel)
+    return solid
+
+
+def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes:
+    """A 2x JPEG preview, matching how Clockology stores face thumbnails.
+
+    Text is placed from the same layout table the layers use, so the preview is
+    a real check on the composition rather than a hand-tuned mock-up.
+    """
+    w, h = lib.width, lib.height
+    canvas = Image.new("RGBA", (w, h), _hex_to_rgb(colors[1]) + (255,))
+    canvas.alpha_composite(lib.image("starfield"))
+
+    accent = _hex_to_rgb(colors[2])
+    scanner = _hex_to_rgb(colors[3])
+    alert = _hex_to_rgb(colors[4])
+    chrome = _hex_to_rgb(colors[6])
+    white = _hex_to_rgb(colors[0])
+
+    if design == "hud":
+        sweep = _tint(lib.image("radar_sweep"), accent, alpha=0.55)
+        canvas.alpha_composite(sweep.rotate(-250, resample=Image.BICUBIC))
+    canvas.alpha_composite(_tint(lib.image("hud_ring"), accent))
+    canvas.alpha_composite(_tint(lib.image("hud_frame"), chrome))
+
+    draw = ImageDraw.Draw(canvas)
+
+    def write(entry, text, fill):
+        x, y, scale = entry
+        px = w / 2 + x * w / 2
+        py = h / 2 - y * h / 2
+        draw.text((px, py), text, font=_font(max(6, int(scale * h * TEXT_SCALE_TO_HEIGHT))),
+                  fill=fill, anchor="mm")
+
+    def battery(entry, level=0.72):
+        x, y, scale = entry
+        px = w / 2 + x * w / 2
+        py = h / 2 - y * h / 2
+        bw = scale * h * 0.10
+        bh = bw * 0.46
+        box = [px - bw / 2, py - bh / 2, px + bw / 2, py + bh / 2]
+        draw.rounded_rectangle(box, radius=bh * 0.28, outline=chrome, width=max(1, int(bh * 0.12)))
+        pad = bh * 0.22
+        draw.rounded_rectangle(
+            [box[0] + pad, box[1] + pad, box[0] + pad + (bw - 2 * pad) * level, box[3] - pad],
+            radius=bh * 0.14, fill=accent,
+        )
+        draw.rounded_rectangle(
+            [box[2] + bh * 0.06, py - bh * 0.18, box[2] + bh * 0.22, py + bh * 0.18],
+            radius=bh * 0.06, fill=chrome,
+        )
+
+    if design == "analog":
+        canvas.alpha_composite(_tint(lib.image("reticle"), scanner))
+        # A conventional 10:09:30 pose.
+        canvas.alpha_composite(_tint(lib.image("hand_hour"), white).rotate(-300, resample=Image.BICUBIC))
+        canvas.alpha_composite(_tint(lib.image("hand_minute"), white).rotate(-54, resample=Image.BICUBIC))
+        canvas.alpha_composite(_tint(lib.image("hand_second"), alert).rotate(-180, resample=Image.BICUBIC))
+        canvas.alpha_composite(_tint(lib.image("center_cap"), white))
+        draw = ImageDraw.Draw(canvas)
+        write(ANALOG_POS["date"], "MON 09", accent)
+        write(ANALOG_POS["hull"], "62", alert)
+        battery(ANALOG_POS["battery"])
+    else:
+        write(HUD_POS["callsign"], "S T A R  F I G H T E R", chrome)
+        write(HUD_POS["time"], "10:09", white)
+        write(HUD_POS["date"], "MON 09", accent)
+        write(HUD_POS["hull_label"], "HULL", chrome)
+        write(HUD_POS["hull"], "62", alert)
+        write(HUD_POS["temp_label"], "TEMP", chrome)
+        write(HUD_POS["temp"], "18\u00b0", scanner)
+        battery(HUD_POS["battery"])
+
+    preview = canvas.convert("RGB").resize((w * 2, h * 2), Image.LANCZOS)
+    buffer = io.BytesIO()
+    preview.save(buffer, format="JPEG", quality=88)
+    return buffer.getvalue()
+
+
+def build_face(design: str, size: str, variant: str, seed: int = 7) -> dict:
+    """Assemble the full archive graph for one face."""
+    width, height = CANVASES[size]
+    title, layer_builder, categories = DESIGNS[design]
+    colors = palette(variant)
+    lib = AssetLibrary(width, height, seed)
+
+    layers = layer_builder(lib)
+    thumbnail = render_thumbnail(lib, design, colors)
+
+    return {
+        "faceSetting": {
+            "title": f"{title} ({variant.title()})",
+            "uniqueID": str(uuid.uuid4()).upper(),
+            "filterCategories": categories,
+            "faceColors": colors,
+            "lastUpdateDate": 0.0,
+            "faceLayers": layers,
+        },
+        "mediaAssets": lib.assets,
+        "thumbnailImageData": thumbnail,
+        "syncModePreference": "",
+    }
