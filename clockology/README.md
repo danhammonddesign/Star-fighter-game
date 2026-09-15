@@ -1,16 +1,16 @@
-# Star Fighter — Clockology watch faces
+# Clockology watch faces
 
 Custom Apple Watch faces for [Clockology](https://apps.apple.com/us/app/clockology/id1456386228),
-generated from source. A cockpit-HUD read on the game's theme: starfield backdrop,
-targeting dial, and readouts labelled as ship systems.
+generated from source — artwork, animation and the `.clock` container are all built
+by the code in this directory.
 
-| | |
-|---|---|
-| ![Star Fighter HUD](dist/previews/StarFighterHUD-Green-45mm.jpg) | ![Star Fighter Analog](dist/previews/StarFighterAnalog-Green-45mm.jpg) |
-| **Star Fighter HUD** — digital, with a radar sweep on the second hand | **Star Fighter Analog** — swept fighter hands over a targeting reticle |
+| | | |
+|---|---|---|
+| ![Light Cycle](dist/previews/LightCycle-Blue-45mm.jpg) | ![Star Fighter HUD](dist/previews/StarFighterHUD-Green-45mm.jpg) | ![Star Fighter Analog](dist/previews/StarFighterAnalog-Green-45mm.jpg) |
+| **Light Cycle** — a Tron-style match playing under the clock | **Star Fighter HUD** — digital, radar sweep on the second hand | **Star Fighter Analog** — swept fighter hands over a targeting reticle |
 
-Three colourways — **Green** (default), **Amber**, **Ice** — built for four watch
-sizes. Everything in `dist/` is ready to install.
+The Star Fighter pair comes in **Green**, **Amber** and **Ice** across four watch
+sizes; Light Cycle is **Blue** at 45mm. Everything in `dist/` is ready to install.
 
 ## Installing a face
 
@@ -37,6 +37,17 @@ does not show on the wrist-raise until you open Clockology.
 
 ## What's on each face
 
+**Light Cycle** (animated)
+
+- A full-face light cycle match looping underneath the clock: two cycles lay glowing
+  ribbons across the grid until one is boxed in and derezzes, then a new round racks up
+- Hours and minutes, large and centred, with a black outline so they stay readable
+  over the action
+- Weekday and date beneath, battery below that
+- Heart rate is included but **hidden by default** — unhide it in the layer list
+- The match is a 12-second H.264 loop (180 KB) on a `VideoTexture` layer set to loop
+  forever. Built for 45mm; other sizes with `--designs tron --sizes 41mm`.
+
 **Star Fighter HUD** (digital)
 
 - Hours and minutes, large and centred
@@ -62,7 +73,7 @@ Requires Python 3.10+ and Pillow.
 ```bash
 pip install Pillow
 cd clockology
-python3 build.py                              # defaults: 2 designs x 3 colourways x 4 sizes
+python3 build.py                              # every design, colourway and default size
 python3 build.py --all                        # every supported size
 python3 build.py --sizes 45mm --variants ice  # just one
 python3 build.py --seed 42                    # reroll the starfield
@@ -70,13 +81,20 @@ python3 build.py --seed 42                    # reroll the starfield
 
 Output goes to `dist/`, with a JPEG preview of each face in `dist/previews/`.
 
-Layout is driven by two tables in `clocklib/face.py` — `ANALOG_POS` and `HUD_POS` —
+Building Light Cycle needs one more package for the encoder: `pip install imageio-ffmpeg`.
+
+Layout is driven by tables in `clocklib/face.py` — `ANALOG_POS`, `HUD_POS`, `TRON_POS` —
 which hold the `(x, y, scale)` of every readout. The layer graph and the preview
 renderer both read those tables, so a preview always reflects the real composition.
 Colourways live in `VARIANTS` and only repaint three accent slots of the palette.
 
 Artwork in `clocklib/art.py` is drawn procedurally at 4× and resampled down, so any
 canvas size comes out crisp; nothing is a fixed-resolution bitmap.
+
+`clocklib/lightcycle.py` holds the light cycle game: a grid simulation where each rider
+picks its next turn by flood-filling the open space around each option, plus the frame
+renderer and the ffmpeg call that encodes the loop. The clip opens and closes on black,
+so it cycles without a visible seam.
 
 ### Inspecting a face
 
@@ -129,6 +147,12 @@ Layer types seen in the wild: `ColorTexture`, `ImageTexture`, `GradientTexture`,
 `HourHand`, `MinuteHand`, `SecondHand`, `ActivityRing`, `BatteryIndicator`, `Icon`,
 `MoonPhase`, `Utility`.
 
+**Animation** is a `VideoTexture` layer. Its `filenameForImage` names a `.mov` in
+`mediaAssets` and `layerOptions.numberOfLoops` of `-1` loops forever. The asset must be
+a **QuickTime** file — brand `ftypqt`, not `ftypisom` — carrying H.264 in `yuv420p`, so
+ffmpeg needs `-f mov`. Unlike images, movie assets keep a readable filename rather than
+a UUID.
+
 ## Known caveats
 
 These faces were built and verified offline; they have not been opened on a physical
@@ -139,6 +163,8 @@ writes. What could still need a nudge:
 - **Text sizing.** Clockology's `scale` has no published reference size; the values here
   were calibrated from real faces, so a label may want resizing. Drag it in the app if so.
 - **`Icon` and `BatteryIndicator` dimensions** are estimates for the same reason.
+- **Battery drain.** Light Cycle plays video continuously whenever Clockology is open.
+  Expect it to use noticeably more power than the still faces.
 - **The weather readout** needs Weather permission granted to Clockology, otherwise it
   renders blank.
 

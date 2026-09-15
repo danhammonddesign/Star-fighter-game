@@ -54,13 +54,14 @@ def main(argv=None) -> int:
 
     built = 0
     for design in args.designs:
-        for variant in args.variants:
+        allowed = [v for v in args.variants if v in face.DESIGNS[design]["variants"]]
+        for variant in allowed:
             for size in sizes:
                 graph = face.build_face(design, size, variant, seed=args.seed)
                 payload = encode(graph)
                 verify(payload, graph)
 
-                title = face.DESIGNS[design][0].replace(" ", "")
+                title = face.DESIGNS[design]["title"].replace(" ", "")
                 stem = f"{title}-{variant.title()}-{size}"
                 (out / f"{stem}.clock").write_bytes(payload)
                 (out / "previews" / f"{stem}.jpg").write_bytes(

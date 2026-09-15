@@ -42,16 +42,34 @@ BASE_COLORS = [
     "#FFFFFFFF",  # 11 white
 ]
 
-# Each variant only repaints the three accent slots.
+TRON_COLORS = [
+    "#EAF9FFFF",  # 0  white-blue, for the clock
+    "#000000FF",  # 1  black, the grid void
+    "#00E5FFFF",  # 2  cyan, the player's light ribbon
+    "#2E6BFFFF",  # 3  electric blue, the rival's
+    "#7FE9FFFF",  # 4  pale cyan
+    "#0A1A2AFF",  # 5  navy panel
+    "#4A7FA8FF",  # 6  steel, for chrome and framing
+    "#00A0C8FF",  # 7  dim cyan
+    "#001018FF",  # 8  near black
+    "#66B0FFFF",  # 9  sky blue
+    "#B8ECFFFF",  # 10 ice
+    "#FFFFFFFF",  # 11 white
+]
+
+PALETTES = {"starfighter": BASE_COLORS, "tron": TRON_COLORS}
+
+# Each variant only repaints the three accent slots of its base palette.
 VARIANTS = {
     "green": {},
     "amber": {2: "#FFB13DFF", 3: "#FF7A00FF", 7: "#FFE4B0FF"},
     "ice": {2: "#7FE9FFFF", 3: "#2E9BFFFF", 7: "#D6F4FFFF"},
+    "blue": {},
 }
 
 
-def palette(variant: str) -> list[str]:
-    colors = list(BASE_COLORS)
+def palette_for(design: str, variant: str) -> list[str]:
+    colors = list(PALETTES[DESIGNS[design]["palette"]])
     for index, value in VARIANTS[variant].items():
         colors[index] = value
     return colors
@@ -75,6 +93,14 @@ HUD_POS = {
     "temp_label": (0.42, -0.42, 0.13),
     "temp": (0.42, -0.56, 0.2125),
     "battery": (0.0, -0.80, 1.2),
+}
+
+TRON_POS = {
+    "label": (0.0, 0.60, 0.15),
+    "time": (0.0, 0.10, 0.86),
+    "date": (0.0, -0.13, 0.2125),
+    "battery": (0.0, -0.62, 1.2),
+    "hull": (0.0, -0.78, 0.19),
 }
 
 # Clockology text scale of 1.0 renders at roughly this fraction of canvas height.
@@ -180,6 +206,15 @@ class AssetLibrary:
             kwargs = {"seed": self.seed} if key == "starfield" else {}
             self._images[key] = builder(self.width, self.height, **kwargs)
         return self._images[key]
+
+    def add_raw(self, filename: str, data: bytes) -> str:
+        """Register an asset that isn't drawn by `art`, such as the light cycle movie."""
+        self._files[filename] = filename
+        self.assets.append({"filename": filename, "assetData": data})
+        return filename
+
+    def put_image(self, key: str, image: Image.Image) -> None:
+        self._images[key] = image
 
     def filename(self, key: str) -> str:
         if key not in self._files:
@@ -289,9 +324,64 @@ def hud_layers(lib: AssetLibrary) -> list[dict]:
     return layers
 
 
+def tron_layers(lib: AssetLibrary) -> list[dict]:
+    """The light cycle match runs as a looping video underneath the clock."""
+    movie = lib.movie_filename
+    return [
+        _layer("ColorTexture", "Grid: Void", _texture_options(tinted=False, transparent=False), color=1),
+        _layer("VideoTexture", "Grid: Light Cycle Match",
+               {"filename": "", "numberOfLoops": -1}, color=0, image=movie),
+        _layer("ImageTexture", "Grid: Clock Scrim", _texture_options(tinted=True, transparent=True),
+               color=1, alpha=0.85, image=lib.filename("tron_scrim")),
+        _layer("ImageTexture", "HUD: Circuit Frame", _texture_options(tinted=True, transparent=True),
+               color=2, alpha=0.9, image=lib.filename("tron_frame")),
+
+        _layer("TextLabel", "Readout: Label",
+               _text_options("HHMM", custom_text="THE GRID", kerning=6.0),
+               color=6, **_place(TRON_POS["label"])),
+        _layer("DateTimeLabel", "Readout: Time",
+               _text_options("HHMM", kerning=1.0, outline_width=5.0, outline_color=1),
+               color=0, **_place(TRON_POS["time"])),
+        _layer("DateTimeLabel", "Readout: Date",
+               _text_options("DADD", kerning=3.0, outline_width=3.0, outline_color=1),
+               color=2, **_place(TRON_POS["date"])),
+
+        _layer("BatteryIndicator", "Readout: Power", {
+            "indicatorType": "normal",
+            "autoBatteryColor": False,
+            "desiredThemeColorIndexForBatteryLevel": "2",
+            "desiredThemeColorIndexForOutline": "6",
+            "innerPadding": "0.0",
+            "outlineWidth": "1.0",
+        }, color=2, **_place(TRON_POS["battery"])),
+        _layer("HealthLabel", "Readout: Heart Rate",
+               _text_options("HeartRate", kerning=1.0, outline_width=3.0, outline_color=1),
+               color=4, hidden=True, **_place(TRON_POS["hull"])),
+    ]
+
+
 DESIGNS = {
-    "analog": ("Star Fighter Analog", analog_layers, ["analog", "health", "hd"]),
-    "hud": ("Star Fighter HUD", hud_layers, ["digital", "weather", "health", "hd"]),
+    "analog": {
+        "title": "Star Fighter Analog",
+        "layers": analog_layers,
+        "categories": ["analog", "health", "hd"],
+        "palette": "starfighter",
+        "variants": ["green", "amber", "ice"],
+    },
+    "hud": {
+        "title": "Star Fighter HUD",
+        "layers": hud_layers,
+        "categories": ["digital", "weather", "health", "hd"],
+        "palette": "starfighter",
+        "variants": ["green", "amber", "ice"],
+    },
+    "tron": {
+        "title": "Light Cycle",
+        "layers": tron_layers,
+        "categories": ["digital", "animated", "hd"],
+        "palette": "tron",
+        "variants": ["blue"],
+    },
 }
 
 
@@ -341,11 +431,16 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
     chrome = _hex_to_rgb(colors[6])
     white = _hex_to_rgb(colors[0])
 
-    if design == "hud":
-        sweep = _tint(lib.image("radar_sweep"), accent, alpha=0.55)
-        canvas.alpha_composite(sweep.rotate(-250, resample=Image.BICUBIC))
-    canvas.alpha_composite(_tint(lib.image("hud_ring"), accent))
-    canvas.alpha_composite(_tint(lib.image("hud_frame"), chrome))
+    if design == "tron":
+        canvas.alpha_composite(lib.image("arena_still"))
+        canvas.alpha_composite(_tint(lib.image("tron_scrim"), _hex_to_rgb(colors[1]), alpha=0.85))
+        canvas.alpha_composite(_tint(lib.image("tron_frame"), accent, alpha=0.9))
+    else:
+        if design == "hud":
+            sweep = _tint(lib.image("radar_sweep"), accent, alpha=0.55)
+            canvas.alpha_composite(sweep.rotate(-250, resample=Image.BICUBIC))
+        canvas.alpha_composite(_tint(lib.image("hud_ring"), accent))
+        canvas.alpha_composite(_tint(lib.image("hud_frame"), chrome))
 
     draw = ImageDraw.Draw(canvas)
 
@@ -374,7 +469,12 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
             radius=bh * 0.06, fill=chrome,
         )
 
-    if design == "analog":
+    if design == "tron":
+        write(TRON_POS["label"], "T H E  G R I D", chrome)
+        write(TRON_POS["time"], "10:09", white)
+        write(TRON_POS["date"], "MON 09", accent)
+        battery(TRON_POS["battery"])
+    elif design == "analog":
         canvas.alpha_composite(_tint(lib.image("reticle"), scanner))
         # A conventional 10:09:30 pose.
         canvas.alpha_composite(_tint(lib.image("hand_hour"), white).rotate(-300, resample=Image.BICUBIC))
@@ -401,21 +501,43 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
     return buffer.getvalue()
 
 
-def build_face(design: str, size: str, variant: str, seed: int = 7) -> dict:
+def _attach_light_cycle_movie(lib: AssetLibrary, size: str, seconds: float, seed: int) -> None:
+    """Simulate a match, encode it, and register the movie plus a still for the thumbnail."""
+    import tempfile
+    from pathlib import Path
+
+    from . import lightcycle
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / f"LightCycleArena-{size}.mov"
+        frames = lightcycle.render_match(lib.width, lib.height, seconds=seconds, seed=seed)
+        total = int(seconds * lightcycle.FPS)
+        data, still = lightcycle.encode_mov(
+            frames, lib.width, lib.height, path, capture_index=int(total * 0.62)
+        )
+    lib.movie_filename = lib.add_raw(f"LightCycleArena-{size}.mov", data)
+    lib.put_image("arena_still", still.convert("RGBA"))
+
+
+def build_face(design: str, size: str, variant: str, seed: int = 7,
+               seconds: float = 12.0) -> dict:
     """Assemble the full archive graph for one face."""
     width, height = CANVASES[size]
-    title, layer_builder, categories = DESIGNS[design]
-    colors = palette(variant)
+    spec = DESIGNS[design]
+    colors = palette_for(design, variant)
     lib = AssetLibrary(width, height, seed)
 
-    layers = layer_builder(lib)
+    if design == "tron":
+        _attach_light_cycle_movie(lib, size, seconds, seed)
+
+    layers = spec["layers"](lib)
     thumbnail = render_thumbnail(lib, design, colors)
 
     return {
         "faceSetting": {
-            "title": f"{title} ({variant.title()})",
+            "title": f"{spec['title']} ({variant.title()})",
             "uniqueID": str(uuid.uuid4()).upper(),
-            "filterCategories": categories,
+            "filterCategories": spec["categories"],
             "faceColors": colors,
             "lastUpdateDate": 0.0,
             "faceLayers": layers,

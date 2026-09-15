@@ -290,3 +290,55 @@ def center_cap(w: int, h: int) -> Image.Image:
     inner = outer * 0.42
     draw.ellipse([cx - inner, cy - inner, cx + inner, cy + inner], fill=(0, 0, 0, 255))
     return _finish(img, w, h)
+
+
+def tron_scrim(w: int, h: int) -> Image.Image:
+    """A soft dark blob behind the clock, so the time stays readable over the match.
+
+    Drawn white with a graded alpha; the layer tints it to the palette's black.
+    """
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    cx, cy = w / 2, h * 0.46
+    rings = 48
+    for i in range(rings, 0, -1):
+        t = i / rings
+        rx = w * 0.66 * t
+        ry = h * 0.33 * t
+        alpha = int(215 * (1.0 - t) ** 0.70)
+        draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=(255, 255, 255, alpha))
+    return img.filter(ImageFilter.GaussianBlur(radius=max(2, w * 0.03)))
+
+
+def tron_frame(w: int, h: int) -> Image.Image:
+    """A broken rectangular circuit frame. Drawn white, meant to be tinted."""
+    img, draw = _canvas(w, h)
+    s = SUPERSAMPLE
+    W, H = w * s, h * s
+    inset = min(W, H) * 0.040
+    width = max(1, int(2.2 * s))
+    color = (255, 255, 255, 225)
+    gap_x = W * 0.16
+    gap_y = H * 0.13
+
+    left, top, right, bottom = inset, inset, W - inset, H - inset
+    # Horizontal rails, broken at the centre.
+    for y in (top, bottom):
+        draw.line([left, y, W / 2 - gap_x, y], fill=color, width=width)
+        draw.line([W / 2 + gap_x, y, right, y], fill=color, width=width)
+    # Vertical rails, broken at the centre.
+    for x in (left, right):
+        draw.line([x, top, x, H / 2 - gap_y], fill=color, width=width)
+        draw.line([x, H / 2 + gap_y, x, bottom], fill=color, width=width)
+
+    # Solid corner nodes where the rails meet.
+    node = min(W, H) * 0.022
+    for x, y in ((left, top), (right, top), (left, bottom), (right, bottom)):
+        draw.rectangle([x - node, y - node, x + node, y + node], fill=(255, 255, 255, 255))
+
+    # Centre tick on each broken rail.
+    tick = min(W, H) * 0.018
+    for x, y, dx, dy in ((W / 2, top, 0, 1), (W / 2, bottom, 0, -1), (left, H / 2, 1, 0), (right, H / 2, -1, 0)):
+        draw.line([x, y, x + tick * dx, y + tick * dy], fill=color, width=width)
+
+    return _finish(img, w, h)
