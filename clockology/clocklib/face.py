@@ -10,6 +10,8 @@ from __future__ import annotations
 import io
 import uuid
 
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 from . import art
@@ -57,7 +59,23 @@ TRON_COLORS = [
     "#FFFFFFFF",  # 11 white
 ]
 
-PALETTES = {"starfighter": BASE_COLORS, "tron": TRON_COLORS}
+# Arcade values: maze blue, pellet peach, and the four ghost colours.
+PACMAN_COLORS = [
+    "#FFFFFFFF",  # 0  white, the score font
+    "#000000FF",  # 1  black, the board
+    "#2121DEFF",  # 2  maze blue
+    "#FFB8AEFF",  # 3  pellet peach
+    "#FFFF00FF",  # 4  hero yellow
+    "#FF0000FF",  # 5  Blinky
+    "#FFB8FFFF",  # 6  Pinky, and the chamber gate
+    "#00FFFFFF",  # 7  Inky
+    "#FFB852FF",  # 8  Clyde
+    "#2121FFFF",  # 9  frightened blue
+    "#DEDEDEFF",  # 10 light grey
+    "#FFCC00FF",  # 11 amber
+]
+
+PALETTES = {"starfighter": BASE_COLORS, "tron": TRON_COLORS, "pacman": PACMAN_COLORS}
 
 # Each variant only repaints the three accent slots of its base palette.
 VARIANTS = {
@@ -65,6 +83,7 @@ VARIANTS = {
     "amber": {2: "#FFB13DFF", 3: "#FF7A00FF", 7: "#FFE4B0FF"},
     "ice": {2: "#7FE9FFFF", 3: "#2E9BFFFF", 7: "#D6F4FFFF"},
     "blue": {},
+    "arcade": {},
 }
 
 
@@ -101,6 +120,14 @@ TRON_POS = {
     "date": (0.0, -0.13, 0.2125),
     "battery": (0.0, -0.62, 1.2),
     "hull": (0.0, -0.78, 0.19),
+}
+
+# The clock sits in the chamber the ghosts start from; the date rides the top
+# band above the board, where the arcade puts the score line.
+PACMAN_POS = {
+    "time": (0.0, -0.04, 0.58),
+    "date": (0.0, 0.93, 0.17),
+    "battery": (0.0, -0.93, 1.0),
 }
 
 # Clockology text scale of 1.0 renders at roughly this fraction of canvas height.
@@ -360,6 +387,27 @@ def tron_layers(lib: AssetLibrary) -> list[dict]:
     ]
 
 
+def pacman_layers(lib: AssetLibrary) -> list[dict]:
+    """The board plays underneath; the clock lives in the empty chamber."""
+    return [
+        _layer("ColorTexture", "Board: Black", _texture_options(tinted=False, transparent=False), color=1),
+        _layer("VideoTexture", "Board: Maze Game",
+               {"filename": "", "numberOfLoops": -1}, color=0, image=lib.movie_filename),
+        _layer("DateTimeLabel", "Readout: Time", _text_options("HHMM", kerning=1.0),
+               color=0, **_place(PACMAN_POS["time"])),
+        _layer("DateTimeLabel", "Readout: Date", _text_options("DADD", kerning=2.0),
+               color=3, **_place(PACMAN_POS["date"])),
+        _layer("BatteryIndicator", "Readout: Battery", {
+            "indicatorType": "normal",
+            "autoBatteryColor": False,
+            "desiredThemeColorIndexForBatteryLevel": "4",
+            "desiredThemeColorIndexForOutline": "10",
+            "innerPadding": "0.0",
+            "outlineWidth": "1.0",
+        }, color=4, hidden=True, **_place(PACMAN_POS["battery"])),
+    ]
+
+
 DESIGNS = {
     "analog": {
         "title": "Star Fighter Analog",
@@ -381,11 +429,31 @@ DESIGNS = {
         "categories": ["digital", "animated", "hd"],
         "palette": "tron",
         "variants": ["blue"],
+        "sizes": ["45mm"],
+    },
+    "pacman": {
+        "title": "Maze Chase",
+        "layers": pacman_layers,
+        "categories": ["digital", "animated", "hd"],
+        "palette": "pacman",
+        "variants": ["arcade"],
+        "sizes": ["45mm"],
     },
 }
 
 
 # --- thumbnail -------------------------------------------------------------
+
+PIXEL_FONT = Path(__file__).resolve().parent.parent / "assets" / "fonts" / "Silkscreen-Regular.ttf"
+
+
+def _pixel_font(size: int):
+    """Silkscreen, the closest free stand-in for the arcade score font."""
+    try:
+        return ImageFont.truetype(str(PIXEL_FONT), size)
+    except OSError:
+        return _font(size)
+
 
 def _font(size: int):
     candidates = [
@@ -431,7 +499,9 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
     chrome = _hex_to_rgb(colors[6])
     white = _hex_to_rgb(colors[0])
 
-    if design == "tron":
+    if design == "pacman":
+        canvas.alpha_composite(lib.image("arena_still"))
+    elif design == "tron":
         canvas.alpha_composite(lib.image("arena_still"))
         canvas.alpha_composite(_tint(lib.image("tron_scrim"), _hex_to_rgb(colors[1]), alpha=0.85))
         canvas.alpha_composite(_tint(lib.image("tron_frame"), accent, alpha=0.9))
@@ -444,12 +514,13 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
 
     draw = ImageDraw.Draw(canvas)
 
-    def write(entry, text, fill):
+    def write(entry, text, fill, pixel=False):
         x, y, scale = entry
         px = w / 2 + x * w / 2
         py = h / 2 - y * h / 2
-        draw.text((px, py), text, font=_font(max(6, int(scale * h * TEXT_SCALE_TO_HEIGHT))),
-                  fill=fill, anchor="mm")
+        size = max(6, int(scale * h * TEXT_SCALE_TO_HEIGHT))
+        font = _pixel_font(size) if pixel else _font(size)
+        draw.text((px, py), text, font=font, fill=fill, anchor="mm")
 
     def battery(entry, level=0.72):
         x, y, scale = entry
@@ -469,7 +540,10 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
             radius=bh * 0.06, fill=chrome,
         )
 
-    if design == "tron":
+    if design == "pacman":
+        write(PACMAN_POS["time"], "10:09", _hex_to_rgb(colors[0]), pixel=True)
+        write(PACMAN_POS["date"], "MON 09", _hex_to_rgb(colors[3]), pixel=True)
+    elif design == "tron":
         write(TRON_POS["label"], "T H E  G R I D", chrome)
         write(TRON_POS["time"], "10:09", white)
         write(TRON_POS["date"], "MON 09", accent)
@@ -501,21 +575,33 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
     return buffer.getvalue()
 
 
-def _attach_light_cycle_movie(lib: AssetLibrary, size: str, seconds: float, seed: int) -> None:
-    """Simulate a match, encode it, and register the movie plus a still for the thumbnail."""
+def _attach_movie(lib: AssetLibrary, design: str, size: str, seconds: float, seed: int) -> None:
+    """Render the design's animation, encode it, and register the movie.
+
+    One frame is kept as a still so the face thumbnail shows the animation without
+    the whole sequence having to be held in memory.
+    """
     import tempfile
     from pathlib import Path
 
-    from . import lightcycle
+    if design == "tron":
+        from . import lightcycle as engine
+        name = f"LightCycleArena-{size}.mov"
+        frames = engine.render_match(lib.width, lib.height, seconds=seconds, seed=seed)
+        capture = int(seconds * engine.FPS * 0.62)
+    else:
+        from . import pacman as engine
+        name = f"PacManBoard-{size}.mov"
+        chosen, _ = engine.find_winning_seed(start=seed)
+        frames = engine.render_match(lib.width, lib.height, seed=chosen)
+        capture = engine.still_frame_index(chosen)
 
     with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / f"LightCycleArena-{size}.mov"
-        frames = lightcycle.render_match(lib.width, lib.height, seconds=seconds, seed=seed)
-        total = int(seconds * lightcycle.FPS)
-        data, still = lightcycle.encode_mov(
-            frames, lib.width, lib.height, path, capture_index=int(total * 0.62)
+        path = Path(tmp) / name
+        data, still = engine.encode_mov(
+            frames, lib.width, lib.height, path, capture_index=capture
         )
-    lib.movie_filename = lib.add_raw(f"LightCycleArena-{size}.mov", data)
+    lib.movie_filename = lib.add_raw(name, data)
     lib.put_image("arena_still", still.convert("RGBA"))
 
 
@@ -527,8 +613,8 @@ def build_face(design: str, size: str, variant: str, seed: int = 7,
     colors = palette_for(design, variant)
     lib = AssetLibrary(width, height, seed)
 
-    if design == "tron":
-        _attach_light_cycle_movie(lib, size, seconds, seed)
+    if design in ("tron", "pacman"):
+        _attach_movie(lib, design, size, seconds, seed)
 
     layers = spec["layers"](lib)
     thumbnail = render_thumbnail(lib, design, colors)

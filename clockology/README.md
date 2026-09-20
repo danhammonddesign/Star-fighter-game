@@ -4,13 +4,13 @@ Custom Apple Watch faces for [Clockology](https://apps.apple.com/us/app/clockolo
 generated from source — artwork, animation and the `.clock` container are all built
 by the code in this directory.
 
-| | | |
-|---|---|---|
-| ![Light Cycle](dist/previews/LightCycle-Blue-45mm.jpg) | ![Star Fighter HUD](dist/previews/StarFighterHUD-Green-45mm.jpg) | ![Star Fighter Analog](dist/previews/StarFighterAnalog-Green-45mm.jpg) |
-| **Light Cycle** — a Tron-style match playing under the clock | **Star Fighter HUD** — digital, radar sweep on the second hand | **Star Fighter Analog** — swept fighter hands over a targeting reticle |
+| | | | |
+|---|---|---|---|
+| ![Maze Chase](dist/previews/MazeChase-Arcade-45mm.jpg) | ![Light Cycle](dist/previews/LightCycle-Blue-45mm.jpg) | ![Star Fighter HUD](dist/previews/StarFighterHUD-Green-45mm.jpg) | ![Star Fighter Analog](dist/previews/StarFighterAnalog-Green-45mm.jpg) |
+| **Maze Chase** — an arcade maze game, clock in the ghost chamber | **Light Cycle** — a Tron-style match playing under the clock | **Star Fighter HUD** — digital, radar sweep on the second hand | **Star Fighter Analog** — swept fighter hands over a reticle |
 
 The Star Fighter pair comes in **Green**, **Amber** and **Ice** across four watch
-sizes; Light Cycle is **Blue** at 45mm. Everything in `dist/` is ready to install.
+sizes; the two animated faces are 45mm. Everything in `dist/` is ready to install.
 
 ## Installing a face
 
@@ -36,6 +36,17 @@ third-party app, not a real watchOS face, so it cannot be set as your default fa
 does not show on the wrist-raise until you open Clockology.
 
 ## What's on each face
+
+**Maze Chase** (animated)
+
+- A full arcade maze game loops under the clock: the hero clears every pellet while
+  four ghosts hunt him with the arcade's own targeting rules, power pellets turn them
+  blue, and the board flashes white when it is cleared — then a fresh board racks up
+- The board is reshaped from the arcade's tall 28x31 to a 19x21 that suits a watch,
+  and the ghost house in the middle is enlarged into an empty chamber holding the time
+- Weekday and date ride the top band, where the arcade puts the score line
+- Battery is included but **hidden by default**
+- A 29-second H.264 loop (600 KB) on a `VideoTexture` layer
 
 **Light Cycle** (animated)
 
@@ -66,6 +77,18 @@ does not show on the wrist-raise until you open Clockology.
 - An Activity move ring around the dial, **hidden by default** — unhide it in the
   layer list if you want it
 
+## The clock font
+
+The face ships using Clockology's own font, because Clockology can only use fonts
+installed on the device — a font cannot be baked into a `.clock` file. For the arcade
+look, `assets/fonts/Silkscreen-Regular.ttf` is bundled (SIL Open Font License, see the
+OFL text beside it). Install it on the iPhone with any iOS font installer, then in
+Clockology open the face, tap the **Readout: Time** layer and pick Silkscreen. Check
+Clockology's built-in font list first — it may already carry something arcade-like.
+
+The previews in `dist/previews/` are rendered with Silkscreen, so they show the
+intended result rather than the shipped default.
+
 ## Building from source
 
 Requires Python 3.10+ and Pillow.
@@ -90,6 +113,14 @@ Colourways live in `VARIANTS` and only repaint three accent slots of the palette
 
 Artwork in `clocklib/art.py` is drawn procedurally at 4× and resampled down, so any
 canvas size comes out crisp; nothing is a fixed-resolution bitmap.
+
+`clocklib/pacman.py` holds the maze game: the board, the hero's routing, the arcade
+ghost targeting, the wall renderer and the encoder. The hero picks each move from two
+BFS distance fields — one measured from every ghost, one from every remaining pellet —
+and refuses any move into a pocket he could be sealed into, working that out from the
+speed ratio between him and the ghosts. He still loses most matches, so `render_match`
+searches seeds and animates the first clean win of a sensible length; that is what
+makes "the hero always wins" true rather than hoped for.
 
 `clocklib/lightcycle.py` holds the light cycle game: a grid simulation where each rider
 picks its next turn by flood-filling the open space around each option, plus the frame
@@ -163,8 +194,9 @@ writes. What could still need a nudge:
 - **Text sizing.** Clockology's `scale` has no published reference size; the values here
   were calibrated from real faces, so a label may want resizing. Drag it in the app if so.
 - **`Icon` and `BatteryIndicator` dimensions** are estimates for the same reason.
-- **Battery drain.** Light Cycle plays video continuously whenever Clockology is open.
-  Expect it to use noticeably more power than the still faces.
+- **Battery drain.** Maze Chase and Light Cycle play video continuously whenever
+  Clockology is open. Expect noticeably more power use than the still faces.
+- **The clock font** is Clockology's own unless Silkscreen is installed — see above.
 - **The weather readout** needs Weather permission granted to Clockology, otherwise it
   renders blank.
 
