@@ -230,6 +230,7 @@ class AssetLibrary:
     def __init__(self, width: int, height: int, seed: int):
         self.width, self.height, self.seed = width, height, seed
         self.clock_font = ""
+        self.video_scale = 1.0
         self._images: dict[str, Image.Image] = {}
         self._files: dict[str, str] = {}
         self.assets: list[dict] = []
@@ -398,8 +399,12 @@ def pacman_layers(lib: AssetLibrary) -> list[dict]:
     """The board plays underneath; the clock lives in the empty chamber."""
     return [
         _layer("ColorTexture", "Board: Black", _texture_options(tinted=False, transparent=False), color=1),
+        # Clockology fits a movie to the watch canvas rather than placing it pixel
+        # for pixel, so this scale pulls the board back inside the screen. The
+        # frame's own margins are black, so trimming it only shows more black.
         _layer("VideoTexture", "Board: Maze Game",
-               {"filename": "", "numberOfLoops": -1}, color=0, image=lib.movie_filename),
+               {"filename": "", "numberOfLoops": -1}, color=0,
+               scale=lib.video_scale, image=lib.movie_filename),
         _layer("DateTimeLabel", "Readout: Time",
                _text_options("HHMM", kerning=1.0, font=lib.clock_font),
                color=0, **_place(PACMAN_POS["time"])),
@@ -615,13 +620,14 @@ def _attach_movie(lib: AssetLibrary, design: str, size: str, seconds: float, see
 
 
 def build_face(design: str, size: str, variant: str, seed: int = 7,
-               seconds: float = 12.0, font: str = "") -> dict:
+               seconds: float = 12.0, font: str = "", video_scale: float = 1.0) -> dict:
     """Assemble the full archive graph for one face."""
     width, height = CANVASES[size]
     spec = DESIGNS[design]
     colors = palette_for(design, variant)
     lib = AssetLibrary(width, height, seed)
     lib.clock_font = font
+    lib.video_scale = video_scale
 
     if design in ("tron", "pacman"):
         _attach_movie(lib, design, size, seconds, seed)

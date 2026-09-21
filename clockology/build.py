@@ -32,6 +32,9 @@ def parse_args(argv=None):
     parser.add_argument("--font", default="",
                         help="name a font installed on the watch for the clock layers; "
                              "empty means Clockology's default")
+    parser.add_argument("--video-scale", type=float, default=1.0,
+                        help="shrink an animated layer so Clockology's fit-to-canvas "
+                             "does not push it off the screen")
     parser.add_argument("--out", type=Path, default=DIST)
     return parser.parse_args(argv)
 
@@ -64,12 +67,15 @@ def main(argv=None) -> int:
         design_sizes = [s for s in sizes if s in spec["sizes"]] if spec.get("sizes") else sizes
         for variant in allowed:
             for size in design_sizes:
-                graph = face.build_face(design, size, variant, seed=args.seed, font=args.font)
+                graph = face.build_face(design, size, variant, seed=args.seed, font=args.font,
+                                        video_scale=args.video_scale)
                 payload = encode(graph)
                 verify(payload, graph)
 
                 title = spec["title"].replace(" ", "")
                 label = args.font.replace(" ", "") or variant.title()
+                if args.video_scale != 1.0:
+                    label += f"-fit{int(args.video_scale * 100)}"
                 stem = f"{title}-{label}-{size}"
                 (out / f"{stem}.clock").write_bytes(payload)
                 (out / "previews" / f"{stem}.jpg").write_bytes(
