@@ -32,7 +32,7 @@ def parse_args(argv=None):
     parser.add_argument("--font", default="",
                         help="name a font installed on the watch for the clock layers; "
                              "empty means Clockology's default")
-    parser.add_argument("--video-scale", type=float, default=1.0,
+    parser.add_argument("--video-scale", type=float, default=0.87,
                         help="shrink an animated layer so Clockology's fit-to-canvas "
                              "does not push it off the screen")
     parser.add_argument("--out", type=Path, default=DIST)
