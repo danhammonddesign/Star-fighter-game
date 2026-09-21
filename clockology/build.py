@@ -29,6 +29,9 @@ def parse_args(argv=None):
     parser.add_argument("--sizes", nargs="+", default=list(face.DEFAULT_SIZES), choices=list(face.CANVASES))
     parser.add_argument("--all", action="store_true", help="build every supported watch size")
     parser.add_argument("--seed", type=int, default=7, help="starfield random seed")
+    parser.add_argument("--font", default="",
+                        help="name a font installed on the watch for the clock layers; "
+                             "empty means Clockology's default")
     parser.add_argument("--out", type=Path, default=DIST)
     return parser.parse_args(argv)
 
@@ -61,12 +64,13 @@ def main(argv=None) -> int:
         design_sizes = [s for s in sizes if s in spec["sizes"]] if spec.get("sizes") else sizes
         for variant in allowed:
             for size in design_sizes:
-                graph = face.build_face(design, size, variant, seed=args.seed)
+                graph = face.build_face(design, size, variant, seed=args.seed, font=args.font)
                 payload = encode(graph)
                 verify(payload, graph)
 
                 title = spec["title"].replace(" ", "")
-                stem = f"{title}-{variant.title()}-{size}"
+                label = args.font.replace(" ", "") or variant.title()
+                stem = f"{title}-{label}-{size}"
                 (out / f"{stem}.clock").write_bytes(payload)
                 (out / "previews" / f"{stem}.jpg").write_bytes(
                     _preview(graph["thumbnailImageData"])

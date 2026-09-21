@@ -171,14 +171,20 @@ def _texture_options(*, tinted: bool, transparent: bool) -> dict:
 
 
 def _text_options(format_type, *, custom_text="", justification="Centered",
-                  kerning=0.0, outline_width=0.0, outline_color=0, effect="None") -> dict:
+                  kerning=0.0, outline_width=0.0, outline_color=0, effect="None",
+                  font="") -> dict:
+    """Layer options for a text layer.
+
+    `font` names a font that must already be installed on the *watch* — a font
+    cannot be embedded in a .clock file. Left empty, Clockology uses its default.
+    """
     return {
         "formatType": format_type,
         "customText": custom_text,
         "shouldShowCustomText": bool(custom_text),
         "justificationType": justification,
         "fontType": "NumberTextTypeSystem",
-        "customFont": "",
+        "customFont": font,
         "casingType": "Uppercased",
         "kerning": _num(kerning),
         "effectType": effect,
@@ -223,6 +229,7 @@ class AssetLibrary:
 
     def __init__(self, width: int, height: int, seed: int):
         self.width, self.height, self.seed = width, height, seed
+        self.clock_font = ""
         self._images: dict[str, Image.Image] = {}
         self._files: dict[str, str] = {}
         self.assets: list[dict] = []
@@ -393,9 +400,11 @@ def pacman_layers(lib: AssetLibrary) -> list[dict]:
         _layer("ColorTexture", "Board: Black", _texture_options(tinted=False, transparent=False), color=1),
         _layer("VideoTexture", "Board: Maze Game",
                {"filename": "", "numberOfLoops": -1}, color=0, image=lib.movie_filename),
-        _layer("DateTimeLabel", "Readout: Time", _text_options("HHMM", kerning=1.0),
+        _layer("DateTimeLabel", "Readout: Time",
+               _text_options("HHMM", kerning=1.0, font=lib.clock_font),
                color=0, **_place(PACMAN_POS["time"])),
-        _layer("DateTimeLabel", "Readout: Date", _text_options("DADD", kerning=2.0),
+        _layer("DateTimeLabel", "Readout: Date",
+               _text_options("DADD", kerning=2.0, font=lib.clock_font),
                color=3, **_place(PACMAN_POS["date"])),
         _layer("BatteryIndicator", "Readout: Battery", {
             "indicatorType": "normal",
@@ -606,12 +615,13 @@ def _attach_movie(lib: AssetLibrary, design: str, size: str, seconds: float, see
 
 
 def build_face(design: str, size: str, variant: str, seed: int = 7,
-               seconds: float = 12.0) -> dict:
+               seconds: float = 12.0, font: str = "") -> dict:
     """Assemble the full archive graph for one face."""
     width, height = CANVASES[size]
     spec = DESIGNS[design]
     colors = palette_for(design, variant)
     lib = AssetLibrary(width, height, seed)
+    lib.clock_font = font
 
     if design in ("tron", "pacman"):
         _attach_movie(lib, design, size, seconds, seed)
@@ -621,7 +631,7 @@ def build_face(design: str, size: str, variant: str, seed: int = 7,
 
     return {
         "faceSetting": {
-            "title": f"{spec['title']} ({variant.title()})",
+            "title": f"{spec['title']} ({font or variant.title()})",
             "uniqueID": str(uuid.uuid4()).upper(),
             "filterCategories": spec["categories"],
             "faceColors": colors,

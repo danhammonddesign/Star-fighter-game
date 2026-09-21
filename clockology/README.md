@@ -79,15 +79,36 @@ does not show on the wrist-raise until you open Clockology.
 
 ## The clock font
 
-The face ships using Clockology's own font, because Clockology can only use fonts
-installed on the device — a font cannot be baked into a `.clock` file. For the arcade
-look, `assets/fonts/Silkscreen-Regular.ttf` is bundled (SIL Open Font License, see the
-OFL text beside it). Install it on the iPhone with any iOS font installer, then in
-Clockology open the face, tap the **Readout: Time** layer and pick Silkscreen. Check
-Clockology's built-in font list first — it may already carry something arcade-like.
+A font **cannot be embedded in a `.clock` file** — the format has no slot for one, so
+the clock can only use a font already present on the device. Note that the binding
+constraint is *watchOS*, not iOS: the face is drawn by the Clockology app on the watch,
+and watchOS ships a much smaller font set than the phone. A font installed on the
+iPhone through a configuration profile does not necessarily reach the watch.
 
-The previews in `dist/previews/` are rendered with Silkscreen, so they show the
-intended result rather than the shipped default.
+(Clockology's newer `.clock2` format *can* carry fonts — third-party extractors pull
+`.ttf` data straight out of those files. This project does not write `.clock2`.)
+
+Build with any font name via `--font`, which fills the `customFont` field on the clock
+layers:
+
+```bash
+python3 build.py --designs pacman --sizes 45mm --font Menlo
+```
+
+Square-ish candidates worth trying, most to least arcade-looking: **Krungthep**
+(a Thai face whose Latin glyphs are blocky and squared-off), **Silom**, **Menlo**,
+**Courier New**, **DIN Condensed**. `dist/` carries pre-built variants. If a named
+font is missing on the watch the layer falls back, so the worst case is ordinary
+digits, not a blank clock — but confirm on the wrist, and whichever renders, keep.
+
+Clockology's own font picker is the real source of truth: open the face, tap the
+**Readout: Time** layer, and the list shows exactly what that device can use, with a
+live preview. Picking there is one tap and always works.
+
+`assets/fonts/Silkscreen-Regular.ttf` is bundled (SIL Open Font License, text beside
+it) as the closest free match to the arcade score font, for anyone who wants to try
+installing it. The previews in `dist/previews/` are rendered with it, so they show the
+intended look rather than the shipped default.
 
 ## Building from source
 
