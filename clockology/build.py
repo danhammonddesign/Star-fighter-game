@@ -74,7 +74,8 @@ def main(argv=None) -> int:
 
                 title = spec["title"].replace(" ", "")
                 label = args.font.replace(" ", "") or variant.title()
-                if args.video_scale != 1.0:
+                # Only movie faces use the fit; square-padded ones compute their own.
+                if design == "pacman" and args.video_scale != 1.0:
                     label += f"-fit{int(args.video_scale * 100)}"
                 stem = f"{title}-{label}-{size}"
                 (out / f"{stem}.clock").write_bytes(payload)

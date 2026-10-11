@@ -435,6 +435,7 @@ DESIGNS = {
         "palette": "tron",
         "variants": ["blue"],
         "sizes": ["45mm"],
+        "square_video": True,
     },
     "pacman": {
         "title": "Maze Chase",
@@ -578,6 +579,15 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
     return buffer.getvalue()
 
 
+def _pad_square(frames, width: int, height: int, side: int):
+    """Centre each frame on a black square of the given side."""
+    ox, oy = (side - width) // 2, (side - height) // 2
+    for frame in frames:
+        square = Image.new("RGB", (side, side), (0, 0, 0))
+        square.paste(frame.convert("RGB"), (ox, oy))
+        yield square
+
+
 def _attach_movie(lib: AssetLibrary, design: str, size: str, seconds: float, seed: int) -> None:
     """Render the design's animation, encode it, and register the movie.
 
@@ -599,11 +609,26 @@ def _attach_movie(lib: AssetLibrary, design: str, size: str, seconds: float, see
         frames = engine.render_match(lib.width, lib.height, seed=chosen)
         capture = engine.still_frame_index(chosen)
 
+    # Clockology shows a movie in a square viewport whose side is the layer scale
+    # times the screen width, cropping a portrait movie top and bottom. Padding
+    # the movie to a square as tall as the screen, then scaling the layer by
+    # height/width, maps every frame pixel onto the screen 1:1.
+    enc_w, enc_h = lib.width, lib.height
+    square = DESIGNS[design].get("square_video")
+    if square:
+        side = max(lib.width, lib.height)
+        frames = _pad_square(frames, lib.width, lib.height, side)
+        enc_w = enc_h = side
+        lib.video_scale = side / lib.width
+
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / name
         data, still = engine.encode_mov(
-            frames, lib.width, lib.height, path, capture_index=capture
+            frames, enc_w, enc_h, path, capture_index=capture
         )
+    if square:
+        ox, oy = (enc_w - lib.width) // 2, (enc_h - lib.height) // 2
+        still = still.crop((ox, oy, ox + lib.width, oy + lib.height))
     lib.movie_filename = lib.add_raw(name, data)
     lib.put_image("arena_still", still.convert("RGBA"))
 
