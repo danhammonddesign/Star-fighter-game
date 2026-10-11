@@ -17,9 +17,20 @@ from PIL import Image, ImageDraw, ImageFilter
 RENDER_SCALE = 2      # draw at 2x, resample down for clean glow
 FPS = 24
 SUBSTEPS = 2          # animation frames per grid move
-TARGET_CELL_PX = 20   # desired on-screen size of one grid cell
+TARGET_CELL_PX = 16   # desired on-screen size of one grid cell
 
 DIRECTIONS = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # N, E, S, W
+
+# The clock sits in a solid block in the middle of the arena. Riders treat it as
+# wall, so they have to route around it. Fractions of the frame, generous enough
+# that it still covers the time and date if the watch scales the movie a little.
+CLOCK_BOX = (0.14, 0.28, 0.86, 0.66)  # left, top, right, bottom
+
+
+def clock_box_cells(cols: int, rows: int):
+    """Grid bounds of the clock block, inclusive."""
+    left, top, right, bottom = CLOCK_BOX
+    return (int(left * cols), int(top * rows), int(right * cols) - 1, int(bottom * rows) - 1)
 
 
 def _turns(direction):
@@ -46,12 +57,15 @@ class Arena:
 
     def __init__(self, cols, rows, rng):
         self.cols, self.rows, self.rng = cols, rows, rng
-        margin = max(2, cols // 4)
+        c0, r0, c1, r1 = clock_box_cells(cols, rows)
+        # Cells are keyed (col, row) throughout.
+        self.block = {(c, r) for c in range(c0, c1 + 1) for r in range(r0, r1 + 1)}
+        # Start clear of the block, one above it and one below.
         self.riders = [
-            Rider(margin, rows // 2, (0, -1), "player", "player"),
-            Rider(cols - 1 - margin, rows // 2, (0, 1), "rival", "rival"),
+            Rider(c0, 2, (1, 0), "player", "player"),
+            Rider(c1, rows - 3, (-1, 0), "rival", "rival"),
         ]
-        self.occupied = {r.head for r in self.riders}
+        self.occupied = {r.head for r in self.riders} | self.block
         self.derezz = None  # (col, row, age) once a rider crashes
 
     def _free(self, col, row):
@@ -138,6 +152,13 @@ class Renderer:
 
         edge = max(1, int(RENDER_SCALE * 1.6))
         draw.rectangle([0, 0, self.w - 1, self.h - 1], outline=self.palette["border"], width=edge)
+
+        # The clock block: solid black so no trail shows through behind the time.
+        c0, r0, c1, r1 = clock_box_cells(self.cols, self.rows)
+        box = [c0 * self.cell_w, r0 * self.cell_h,
+               (c1 + 1) * self.cell_w, (r1 + 1) * self.cell_h]
+        draw.rectangle(box, fill=self.palette["void"])
+        draw.rectangle(box, outline=self.palette["border"], width=edge)
         return grid
 
     def frame(self, arena, fraction, effects, brightness=1.0):

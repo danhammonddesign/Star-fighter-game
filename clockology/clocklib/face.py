@@ -380,14 +380,6 @@ def tron_layers(lib: AssetLibrary) -> list[dict]:
                _text_options("DADD", kerning=3.0, outline_width=3.0, outline_color=1),
                color=2, **_place(TRON_POS["date"])),
 
-        _layer("BatteryIndicator", "Readout: Power", {
-            "indicatorType": "normal",
-            "autoBatteryColor": False,
-            "desiredThemeColorIndexForBatteryLevel": "2",
-            "desiredThemeColorIndexForOutline": "6",
-            "innerPadding": "0.0",
-            "outlineWidth": "1.0",
-        }, color=2, **_place(TRON_POS["battery"])),
         _layer("HealthLabel", "Readout: Heart Rate",
                _text_options("HeartRate", kerning=1.0, outline_width=3.0, outline_color=1),
                color=4, hidden=True, **_place(TRON_POS["hull"])),
@@ -559,7 +551,6 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
         write(TRON_POS["label"], "T H E  G R I D", chrome)
         write(TRON_POS["time"], "10:09", white)
         write(TRON_POS["date"], "MON 09", accent)
-        battery(TRON_POS["battery"])
     elif design == "analog":
         canvas.alpha_composite(_tint(lib.image("reticle"), scanner))
         # A conventional 10:09:30 pose.
