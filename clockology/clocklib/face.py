@@ -365,9 +365,8 @@ def tron_layers(lib: AssetLibrary) -> list[dict]:
     return [
         _layer("ColorTexture", "Grid: Void", _texture_options(tinted=False, transparent=False), color=1),
         _layer("VideoTexture", "Grid: Light Cycle Match",
-               {"filename": "", "numberOfLoops": -1}, color=0, image=movie),
-        _layer("ImageTexture", "Grid: Clock Scrim", _texture_options(tinted=True, transparent=True),
-               color=1, alpha=0.85, image=lib.filename("tron_scrim")),
+               {"filename": "", "numberOfLoops": -1}, color=0,
+               scale=lib.video_scale, image=movie),
         _layer("ImageTexture", "HUD: Circuit Frame", _texture_options(tinted=True, transparent=True),
                color=2, alpha=0.9, image=lib.filename("tron_frame")),
 
@@ -517,7 +516,6 @@ def render_thumbnail(lib: AssetLibrary, design: str, colors: list[str]) -> bytes
         canvas.alpha_composite(lib.image("arena_still"))
     elif design == "tron":
         canvas.alpha_composite(lib.image("arena_still"))
-        canvas.alpha_composite(_tint(lib.image("tron_scrim"), _hex_to_rgb(colors[1]), alpha=0.85))
         canvas.alpha_composite(_tint(lib.image("tron_frame"), accent, alpha=0.9))
     else:
         if design == "hud":
